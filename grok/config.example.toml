@@ -1,0 +1,12 @@
+# ~/.grok/config.toml  (Grok Build 1.0.62+)
+[model.agw]
+model = "YOUR-MODEL"
+base_url = "https://YOUR-GATEWAY:4000/v1"
+name = "YOUR-MODEL via agentgateway"
+env_key = "AGW_API_KEY"            # sent as Authorization: Bearer $AGW_API_KEY
+api_backend = "chat_completions"
+context_window = 128000
+
+[models]
+default = "agw"
+max_retries = 1                    # don't hammer the gateway with retries when you're over budget

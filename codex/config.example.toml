@@ -1,0 +1,18 @@
+# ~/.codex/config.toml  (Codex CLI 0.170+)
+# Provider: Codex only speaks the Responses API now (wire_api = "chat" was removed);
+# agentgateway serves /v1/responses and translates to your backend.
+[model_providers.agw]
+name = "Solo agentgateway"
+base_url = "https://YOUR-GATEWAY:4000/v1"
+env_key = "AGW_API_KEY"          # sent as Authorization: Bearer $AGW_API_KEY
+wire_api = "responses"
+
+# Budget commands: a UserPromptSubmit hook that blocks the prompt (no model call).
+# Codex rejects unknown /slash commands before hooks run, so type them WITHOUT the slash:
+#   my-budget      increase-my-budget
+[[hooks.UserPromptSubmit]]
+[[hooks.UserPromptSubmit.hooks]]
+type = "command"
+command = "/ABSOLUTE/PATH/TO/agentgateway-budget/bin/agw-budget-hook"
+timeout = 30
+statusMessage = "Checking agentgateway budget (local, no LLM)"

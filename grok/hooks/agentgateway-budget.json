@@ -1,0 +1,7 @@
+{
+  "hooks": {
+    "UserPromptSubmit": [
+      { "hooks": [ { "type": "command", "command": "/ABSOLUTE/PATH/TO/agentgateway-budget/bin/agw-budget-hook", "timeout": 15 } ] }
+    ]
+  }
+}

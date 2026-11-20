@@ -1,0 +1,16 @@
+{
+  "name": "agentgateway-budget",
+  "owner": {
+    "name": "sebbycorp"
+  },
+  "plugins": [
+    {
+      "name": "agentgateway-budget",
+      "source": "./claude-code",
+      "description": "/my-budget and /increase-my-budget for Solo Enterprise agentgateway team-pool budgets (no model call)."
+    }
+  ],
+  "metadata": {
+    "description": "Team-pool LLM budget commands for Solo Enterprise agentgateway"
+  }
+}
