@@ -1,0 +1,136 @@
+# yaml-language-server: $schema=https://agentgateway.dev/schema/config
+# Solo Enterprise agentgateway (standalone): team pool + per-user budgets + self-service borrowing
+# Personal limits are raised at runtime via agw's own management API:
+#   PUT http://<agw>:4000/api/config/resources/llm.budget/user-<name>   (as the user; RBAC decides)
+# In file mode agw rewrites this file itself and hot-reloads. Spend counters survive a raise
+# (counter id = budget name + subject; only a unit/window change resets it).
+config:
+  license:
+    key:
+      file: /etc/agentgateway/license.key
+  # Admin port bypasses RBAC by design -> keep it local. Users go through :4000 (RBAC enforced).
+  adminAddr: 127.0.0.1:15000
+  database:
+    url: sqlite:///var/lib/agentgateway/agw.db
+  standardAttributes:
+    user: 'apiKey.user'
+    group: 'apiKey.group'
+  # Custom cost for the self-hosted DGX model (USD per 1M tokens).
+  modelCatalog:
+  - inline:
+      providers:
+        openai:
+          models:
+            qwen3.8-flash-next:
+              name: DGX Spark Qwen3.8 Flash (internal chargeback)
+              rates:
+                input: "3.00"
+                output: "15.00"
+                cacheRead: "0.30"
+
+gateways:
+  default:
+    port: 4000
+
+# UI + management API on :4000, authenticated with the same per-user API keys.
+ui:
+  policies:
+    apiKey:
+      mode: strict
+      keys:
+      - key: sk-admin
+        metadata: {user: admin, group: platform}
+      - key: sk-alice
+        metadata: {user: alice, group: engineering}
+      - key: sk-bob
+        metadata: {user: bob, group: engineering}
+      - key: sk-carol
+        metadata: {user: carol, group: engineering}
+      - key: sk-dave
+        metadata: {user: dave, group: research}
+
+# Who may view/change what through the UI and management API (not the admin port).
+rbac:
+  mode: fine-grained
+  policies:
+  - name: platform-admins
+    subjects: [{user: admin}]
+    preset: admin
+  # Allowed to borrow: may raise ONLY their own budget (subject.user == caller).
+  - name: engineering-borrowers
+    subjects: [{user: alice}, {user: bob}]
+    grants:
+    - {resource: llm.budget, access: view, scope: {names: [pool-engineering]}}
+    - {resource: llm.budget, access: view, scope: {owner: self}}
+    - {resource: llm.budget, access: manage, scope: {owner: self}}
+  # Can see their own + team budget, cannot change anything.
+  - name: engineering-viewers
+    subjects: [{user: carol}]
+    grants:
+    - {resource: llm.budget, access: view, scope: {names: [pool-engineering]}}
+    - {resource: llm.budget, access: view, scope: {owner: self}}
+  - name: research-viewers
+    subjects: [{group: research}]
+    grants:
+    - {resource: llm.budget, access: view, scope: {names: [pool-research]}}
+    - {resource: llm.budget, access: view, scope: {owner: self}}
+
+llm:
+  models:
+  - name: dgx-qwen
+    provider: openAI
+    params:
+      model: qwen3.8-flash-next
+      apiKey: "none"
+      baseUrl: http://YOUR-VLLM-HOST:8000/v1  # any OpenAI-compatible backend
+
+    finalTransformation:
+      reasoning_effort: '"medium"'
+  policies:
+    apiKey:
+      mode: strict
+      keys:
+      - key: sk-alice
+        metadata: {user: alice, group: engineering}
+      - key: sk-bob
+        metadata: {user: bob, group: engineering}
+      - key: sk-carol
+        metadata: {user: carol, group: engineering}
+      - key: sk-dave
+        metadata: {user: dave, group: research}
+
+  # Every matching budget applies; a request is blocked if ANY is exhausted.
+  budgets:
+  # --- Team pools: the hard ceiling, never raised by users ---
+  - name: pool-engineering
+    subject: {group: engineering}
+    limit: {unit: USD, amount: 0.50}
+    window: {rolling: 24h}
+    onBudgetExceeded: Block
+  - name: pool-research
+    subject: {group: research}
+    limit: {unit: USD, amount: 0.20}
+    window: {rolling: 24h}
+    onBudgetExceeded: Block
+
+  # --- Personal guardrails: one named budget per user so each can be raised individually ---
+  - name: user-alice
+    subject: {user: alice}
+    limit: {unit: USD, amount: 0.10}
+    window: {rolling: 24h}
+    onBudgetExceeded: Block
+  - name: user-bob
+    subject: {user: bob}
+    limit: {unit: USD, amount: 0.10}
+    window: {rolling: 24h}
+    onBudgetExceeded: Block
+  - name: user-carol
+    subject: {user: carol}
+    limit: {unit: USD, amount: 0.03}
+    window: {rolling: 24h}
+    onBudgetExceeded: Block
+  - name: user-dave
+    subject: {user: dave}
+    limit: {unit: USD, amount: 0.10}
+    window: {rolling: 24h}
+    onBudgetExceeded: Block

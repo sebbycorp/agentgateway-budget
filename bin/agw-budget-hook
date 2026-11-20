@@ -1,0 +1,14 @@
+#!/usr/bin/env bash
+# UserPromptSubmit hook for harnesses with Claude-Code-style hooks (Codex CLI, Grok Build).
+# Catches "my-budget" / "increase-my-budget" (with or without a leading slash), runs the budget
+# script, and BLOCKS the prompt so it never reaches the model. Everything else passes through.
+here=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
+script=${BUDGET_SCRIPT:-$here/increase-my-budget}
+prompt=$(jq -r '.prompt // ""' | sed 's/^[[:space:]]*//')
+case "${prompt%% *}" in
+  /my-budget|my-budget)                   args=(status) ;;
+  /increase-my-budget|increase-my-budget) args=() ;;
+  *) exit 0 ;;
+esac
+out=$("$script" "${args[@]}" 2>&1)
+jq -n --arg r "$out" '{decision: "block", reason: $r}'

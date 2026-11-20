@@ -1,0 +1,9 @@
+{
+  "name": "agentgateway-budget",
+  "version": "0.1.0",
+  "description": "Team-pool LLM budgets on Solo Enterprise agentgateway: /my-budget shows your budget, /increase-my-budget borrows from the team pool. Handled by a UserPromptSubmit hook: no model call, works while you're blocked.",
+  "author": {
+    "name": "sebbycorp"
+  },
+  "repository": "https://github.com/sebbycorp/agentgateway-budget"
+}

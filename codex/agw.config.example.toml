@@ -1,0 +1,3 @@
+# ~/.codex/agw.config.toml  ->  run: codex -p agw
+model = "YOUR-MODEL"
+model_provider = "agw"
