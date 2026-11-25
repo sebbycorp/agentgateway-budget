@@ -9,6 +9,8 @@ Both commands run **locally, without an LLM call**. They cost nothing and still 
 
 ![pi: blocked, borrow, unblocked](docs/images/pi-flow.gif)
 
+*The red `429 budget_exceeded` lines at the start are the demo, not a failure: bob is over his personal limit, `/increase-my-budget` borrows from the team pool, and the same prompt then works.*
+
 | Harness | How the commands are wired | Typed as | No LLM call |
 |---|---|---|---|
 | [pi](#pi) | Native extension command | `/my-budget` | ✅ |
@@ -69,7 +71,7 @@ sequenceDiagram
 | Who may raise which budget | agentgateway `rbac` (native) |
 | **When** a raise is allowed, and the commands in your agent | **this repo** (`bin/` + one adapter per harness) |
 
-No agentgateway code changes are needed. This was built and tested against the released **v2026.11.1** binary.
+No agentgateway code changes are needed. This was built and tested against the released **v2026.11.1** binary, and re-run with pi on macOS (Apple Silicon) against **v2026.11.1-patch.0**.
 
 ---
 
@@ -131,6 +133,26 @@ Check the RBAC rules with [`tests/rbac-test.sh`](tests/rbac-test.sh). It makes n
 
 ![rbac test](docs/images/rbac-test.png)
 
+### Try it on your laptop (macOS Apple Silicon)
+
+The example config uses Linux paths and a license file. For a local run, download the binary, compare the two checksums it prints, and rewrite those three lines:
+
+```bash
+cd ~/agentgateway-budget && mkdir -p local/bin local/data && cd local     # local/ is git-ignored
+B=https://storage.googleapis.com/enterprise-agentgateway-standalone/v2026.11.1-patch.0/agentgateway-enterprise-darwin-arm64
+curl -fsSL -o bin/agentgateway $B && curl -fsSL $B.sha256 && shasum -a 256 bin/agentgateway && chmod +x bin/agentgateway
+
+sed -e '/^  license:$/,/^      file: .*$/d' \
+    -e 's#sqlite:///var/lib/agentgateway/agw.db#sqlite://./data/agw.db#' \
+    -e 's#http://YOUR-VLLM-HOST:8000/v1#http://your-backend:8000/v1#' \
+    ../gateway/config.example.yaml > config.yaml
+
+export ENTERPRISE_AGENTGATEWAY_LICENSE_KEY=<your-license-key>   # this exact name; AGENTGATEWAY_LICENSE_KEY is not read
+./bin/agentgateway --validate-only -f config.yaml && ./bin/agentgateway -f config.yaml
+```
+
+The gateway, UI and management API are then on `http://localhost:4000` (UI at `/ui`, key `sk-admin`), and the model is called `dgx-qwen`. Run from `local/`, because the SQLite path is relative. Don't commit `local/config.yaml`: in file mode the gateway rewrites it on every raise.
+
 ---
 
 ## 2. Install the script (all harnesses)
@@ -146,13 +168,15 @@ increase-my-budget status
 
 The script looks for the key in `AGW_KEY`, `AGW_API_KEY`, `ANTHROPIC_AUTH_TOKEN`, `OPENAI_API_KEY`, then pi's `agw-ent` provider, and uses the first one it finds. For the URL it checks `AGW_URL`, pi's `agw-ent` baseUrl, `ANTHROPIC_BASE_URL`, then `OPENAI_BASE_URL`. So in most harnesses it simply reuses the key you already configured.
 
+> **Watch the order.** `OPENAI_API_KEY` and `ANTHROPIC_AUTH_TOKEN` come before pi's provider key. If your shell exports a real OpenAI or Anthropic key, the script sends *that* to the gateway and you get `cannot read …/api/budgets/usage` with a 401. Set `AGW_KEY` (or `AGW_API_KEY`) to be explicit. The pi extension does this for you.
+
 ---
 
 ## 3. Per-harness install
 
 ### pi
 
-Requires pi 1.4+. The commands are registered as **native extension commands**: they run the script directly with no agent turn.
+Requires pi 1.4+ (the npm package is now `@earendil-works/pi-coding-agent`; the old `@mariozechner/pi-coding-agent` stops at 0.73). The commands are registered as **native extension commands**: they run the script directly with no agent turn.
 
 ```bash
 mkdir -p ~/.pi/agent/bin ~/.pi/agent/extensions
@@ -178,6 +202,10 @@ Run `pi --provider agw-ent --model your-model`, then type `/my`:
 | Blocked by agentgateway | `/increase-my-budget` | Next prompt works |
 |---|---|---|
 | ![](docs/images/pi-1-blocked.png) | ![](docs/images/pi-2-borrowed.png) | ![](docs/images/pi-3-unblocked.png) |
+
+- The extension passes the `agw-ent` key and URL from `models.json` to the script, so an unrelated `OPENAI_API_KEY` in your shell can't be picked up instead. `AGW_KEY` / `AGW_API_KEY` still override it.
+- On pi 0.73 the two commands work, but a prompt sent while you're blocked hangs in `pi -p` instead of printing the 429. The gateway's 429 carries a `retry-after` of several hours (until the window resets), which may be why. pi 1.5 prints the errors as in the screenshots.
+- If another installed pi package fails to load, start pi with only this extension: `pi -ne -e ~/.pi/agent/extensions/agentgateway-budget.js --provider agw-ent --model your-model`.
 
 > Don't use a pi **prompt template** for this. A template is an agent turn: the model may refuse to run it, the turn is charged to your budget, and it fails once you're blocked.
 
